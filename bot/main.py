@@ -1,14 +1,47 @@
 import asyncio
 import logging
+import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import BotCommandScopeAllPrivateChats, FSInputFile
 
-from bot.config import BOT_TOKEN
+from bot.config import BOT_TOKEN, BOT_PHOTO_PATH
 from bot.handlers import start, download, admin
 
 logging.basicConfig(level=logging.INFO)
+
+COMMANDS = [
+    ("start", "🚀 Запустить бота и узнать возможности"),
+    ("id", "🆔 Узнать свой Telegram ID"),
+    ("help", "ℹ️ Помощь и список команд"),
+    ("add_channel", "➕ Добавить канал в рекламу (@channel)"),
+    ("remove_channel", "➖ Удалить канал из рекламы (@channel)"),
+    ("list_channels", "📋 Список каналов для подписки"),
+]
+
+
+async def setup_bot_meta(bot: Bot) -> None:
+    await bot.set_my_commands(
+        [{"command": c[0], "description": c[1]} for c in COMMANDS],
+        scope=BotCommandScopeAllPrivateChats(),
+    )
+    await bot.set_my_description(
+        "🤖 SaveMediaBot — скачивай видео и аудио с YouTube, Instagram, TikTok, VK и других платформ.\n"
+        "📥 Просто отправь ссылку и выбери формат.\n"
+        "🎬 Выбор качества • 📦 Автосжатие • 📎 Пакетная загрузка"
+    )
+    await bot.set_my_short_description("📥 Скачивай видео/аудио с YouTube, Instagram, TikTok, VK")
+
+
+async def set_bot_photo(bot: Bot, photo_path: str | None) -> None:
+    if not photo_path or not os.path.exists(photo_path):
+        return
+    try:
+        await bot.set_chat_photo(chat_id=bot.id, photo=FSInputFile(photo_path))
+    except Exception:
+        pass
 
 
 async def main() -> None:
@@ -17,6 +50,10 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
+
+    await setup_bot_meta(bot)
+    await set_bot_photo(bot, BOT_PHOTO_PATH)
+
     dp.include_routers(start.router, download.router, admin.router)
 
     try:

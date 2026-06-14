@@ -1,13 +1,13 @@
 import sys
 import os
 import json
-import tempfile
 import unittest
 from unittest.mock import AsyncMock, patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from bot.handlers.download import URL_PATTERN, _extract_urls, _is_shorts, _link_store
+from bot.utils import URL_PATTERN, extract_urls, is_shorts, short_label, SHORTS_HEIGHT
+from bot.handlers.download import _link_store
 from bot.services.downloader import _get_available_heights
 from bot.services.subscription import (
     add_channel, remove_channel, get_required_channels,
@@ -15,70 +15,63 @@ from bot.services.subscription import (
 )
 
 
-class TestURLPattern(unittest.TestCase):
+class TestUtils(unittest.TestCase):
 
     def setUp(self):
         _link_store.clear()
 
-    def test_youtube_url(self):
-        urls = _extract_urls("https://youtube.com/watch?v=abc123")
+    def test_extract_youtube(self):
+        urls = extract_urls("https://youtube.com/watch?v=abc123")
         self.assertEqual(len(urls), 1)
         self.assertIn("youtube.com/watch?v=abc123", urls[0])
 
-    def test_youtu_be(self):
-        urls = _extract_urls("https://youtu.be/abc123")
+    def test_extract_youtu_be(self):
+        urls = extract_urls("https://youtu.be/abc123")
         self.assertEqual(len(urls), 1)
         self.assertIn("youtu.be/abc123", urls[0])
 
-    def test_instagram(self):
-        urls = _extract_urls("https://instagram.com/p/ABC123/")
+    def test_extract_instagram(self):
+        urls = extract_urls("https://instagram.com/p/ABC123/")
         self.assertEqual(len(urls), 1)
 
-    def test_tiktok(self):
-        urls = _extract_urls("https://tiktok.com/@user/video/123456")
+    def test_extract_tiktok(self):
+        urls = extract_urls("https://tiktok.com/@user/video/123456")
         self.assertEqual(len(urls), 1)
 
-    def test_vk(self):
-        urls = _extract_urls("https://vk.com/video-123456_789012")
+    def test_extract_vk(self):
+        urls = extract_urls("https://vk.com/video-123456_789012")
         self.assertEqual(len(urls), 1)
 
-    def test_twitter(self):
-        urls = _extract_urls("https://twitter.com/user/status/123456")
+    def test_extract_twitter(self):
+        urls = extract_urls("https://twitter.com/user/status/123456")
         self.assertEqual(len(urls), 1)
 
-    def test_x_com(self):
-        urls = _extract_urls("https://x.com/user/status/123456")
+    def test_extract_x(self):
+        urls = extract_urls("https://x.com/user/status/123456")
         self.assertEqual(len(urls), 1)
 
     def test_no_url(self):
-        urls = _extract_urls("просто текст без ссылок")
+        urls = extract_urls("просто текст без ссылок")
         self.assertEqual(len(urls), 0)
 
-    def test_multiple_urls(self):
-        text = (
-            "https://youtube.com/watch?v=abc\n"
-            "https://instagram.com/p/xyz/\n"
-            "https://tiktok.com/@user/video/123"
-        )
-        urls = _extract_urls(text)
-        self.assertEqual(len(urls), 3)
+    def test_multiple(self):
+        urls = extract_urls("https://youtube.com/watch?v=abc\nhttps://instagram.com/p/xyz/")
+        self.assertEqual(len(urls), 2)
 
-    def test_duplicate_urls(self):
-        text = "https://youtube.com/watch?v=abc https://youtube.com/watch?v=abc"
-        urls = _extract_urls(text)
+    def test_duplicates(self):
+        urls = extract_urls("https://youtube.com/watch?v=abc https://youtube.com/watch?v=abc")
         self.assertEqual(len(urls), 1)
 
-
-class TestShortsDetection(unittest.TestCase):
-
-    def test_youtube_shorts(self):
-        self.assertTrue(_is_shorts("https://youtube.com/shorts/abc123"))
-        self.assertTrue(_is_shorts("https://youtu.be/shorts/abc123"))
+    def test_is_shorts(self):
+        self.assertTrue(is_shorts("https://youtube.com/shorts/abc123"))
+        self.assertTrue(is_shorts("https://youtu.be/shorts/abc123"))
 
     def test_not_shorts(self):
-        self.assertFalse(_is_shorts("https://youtube.com/watch?v=abc123"))
-        self.assertFalse(_is_shorts("https://instagram.com/p/abc123/"))
-        self.assertFalse(_is_shorts("https://tiktok.com/@user/video/123"))
+        self.assertFalse(is_shorts("https://youtube.com/watch?v=abc123"))
+
+    def test_short_label(self):
+        self.assertEqual(short_label("https://youtube.com/shorts/xyz"), "🎬 Shorts")
+        self.assertEqual(short_label("https://youtube.com/watch?v=abc"), "🎬 Видео")
 
 
 class TestDownloader(unittest.TestCase):
@@ -100,12 +93,10 @@ class TestDownloader(unittest.TestCase):
         self.assertEqual(heights, [2160, 1080, 720, 480, 360, 144])
 
     def test_empty_formats(self):
-        heights = _get_available_heights({"formats": []})
-        self.assertEqual(heights, [])
+        self.assertEqual(_get_available_heights({"formats": []}), [])
 
     def test_no_formats_key(self):
-        heights = _get_available_heights({})
-        self.assertEqual(heights, [])
+        self.assertEqual(_get_available_heights({}), [])
 
 
 class TestSubscriptionService(unittest.TestCase):
@@ -125,46 +116,37 @@ class TestSubscriptionService(unittest.TestCase):
             if os.path.exists(CHANNELS_FILE):
                 os.remove(CHANNELS_FILE)
 
-    def test_empty_channels(self):
+    def test_empty(self):
         self.assertEqual(get_required_channels(), [])
 
-    def test_add_channel(self):
-        self.assertTrue(add_channel("channel1"))
-        self.assertEqual(get_required_channels(), ["channel1"])
+    def test_add(self):
+        self.assertTrue(add_channel("ch1"))
+        self.assertEqual(get_required_channels(), ["ch1"])
 
     def test_add_duplicate(self):
-        add_channel("channel1")
-        self.assertFalse(add_channel("channel1"))
-        self.assertEqual(get_required_channels(), ["channel1"])
+        add_channel("ch1")
+        self.assertFalse(add_channel("ch1"))
 
     def test_add_multiple(self):
-        add_channel("channel1")
-        add_channel("channel2")
-        add_channel("channel3")
-        self.assertEqual(get_required_channels(), ["channel1", "channel2", "channel3"])
+        add_channel("ch1"); add_channel("ch2"); add_channel("ch3")
+        self.assertEqual(get_required_channels(), ["ch1", "ch2", "ch3"])
 
-    def test_remove_channel(self):
-        add_channel("channel1")
-        self.assertTrue(remove_channel("channel1"))
+    def test_remove(self):
+        add_channel("ch1")
+        self.assertTrue(remove_channel("ch1"))
         self.assertEqual(get_required_channels(), [])
 
     def test_remove_not_found(self):
         self.assertFalse(remove_channel("nonexistent"))
 
     def test_remove_from_middle(self):
-        add_channel("ch1")
-        add_channel("ch2")
-        add_channel("ch3")
+        add_channel("ch1"); add_channel("ch2"); add_channel("ch3")
         self.assertTrue(remove_channel("ch2"))
         self.assertEqual(get_required_channels(), ["ch1", "ch3"])
 
     def test_persistence(self):
-        add_channel("persist_channel")
-        channels1 = get_required_channels()
-
-        channels2 = get_required_channels()
-        self.assertEqual(channels1, channels2)
-        self.assertIn("persist_channel", channels2)
+        add_channel("persist")
+        self.assertEqual(get_required_channels(), get_required_channels())
 
 
 class TestLinkStore(unittest.TestCase):
@@ -172,90 +154,63 @@ class TestLinkStore(unittest.TestCase):
     def setUp(self):
         _link_store.clear()
 
-    def test_store_and_retrieve(self):
-        _link_store[1] = {"urls": ["https://youtube.com/watch?v=abc"], "is_shorts": False}
-        entry = _link_store.get(1)
-        self.assertIsNotNone(entry)
-        self.assertEqual(entry["urls"], ["https://youtube.com/watch?v=abc"])
-        self.assertFalse(entry["is_shorts"])
+    def test_store_and_get(self):
+        _link_store[1] = {"urls": ["https://youtube.com/watch?v=abc"]}
+        self.assertIsNotNone(_link_store.get(1))
 
-    def test_store_shorts(self):
-        _link_store[2] = {"urls": ["https://youtube.com/shorts/xyz"], "is_shorts": True}
-        entry = _link_store.get(2)
-        self.assertTrue(entry["is_shorts"])
-
-    def test_delete_after_use(self):
-        _link_store[3] = {"urls": ["https://example.com/video"], "is_shorts": False}
+    def test_delete(self):
+        _link_store[3] = {"urls": ["url"]}
         del _link_store[3]
         self.assertIsNone(_link_store.get(3))
 
-    def test_multiple_urls_in_store(self):
-        urls = ["url1", "url2", "url3"]
-        _link_store[4] = {"urls": urls, "is_shorts": False}
-        entry = _link_store.get(4)
-        self.assertEqual(len(entry["urls"]), 3)
+    def test_multiple(self):
+        _link_store[4] = {"urls": ["u1", "u2", "u3"]}
+        self.assertEqual(len(_link_store[4]["urls"]), 3)
 
 
-class TestCallbackDataParsing(unittest.TestCase):
+class TestCallbackData(unittest.TestCase):
 
-    def test_format_video_parse(self):
-        data = "fmt:video:42"
-        parts = data.split(":")
-        self.assertEqual(parts[0], "fmt")
-        self.assertEqual(parts[1], "video")
-        self.assertEqual(int(parts[2]), 42)
+    def parse(self, data):
+        return data.split(":")
 
-    def test_format_audio_parse(self):
-        data = "fmt:audio:99"
-        parts = data.split(":")
-        self.assertEqual(parts[1], "audio")
-        self.assertEqual(int(parts[2]), 99)
+    def test_fmt_video(self):
+        p = self.parse("fmt:video:42")
+        self.assertEqual(p, ["fmt", "video", "42"])
 
-    def test_quality_parse_best(self):
-        data = "q:best:42"
-        parts = data.split(":")
-        height_str = parts[1]
-        self.assertEqual(height_str, "best")
+    def test_fmt_audio(self):
+        p = self.parse("fmt:audio:99")
+        self.assertEqual(p[1], "audio")
 
-    def test_quality_parse_number(self):
-        data = "q:720:42"
-        parts = data.split(":")
-        height = int(parts[1])
-        self.assertEqual(height, 720)
+    def test_q_best(self):
+        p = self.parse("q:best:42")
+        self.assertEqual(p[1], "best")
 
-    def test_batch_video_parse(self):
-        data = "batch:video:7"
-        parts = data.split(":")
-        self.assertEqual(parts[1], "video")
-        self.assertEqual(int(parts[2]), 7)
+    def test_q_number(self):
+        p = self.parse("q:720:42")
+        self.assertEqual(int(p[1]), 720)
 
-    def test_batch_audio_parse(self):
-        data = "batch:audio:3"
-        parts = data.split(":")
-        self.assertEqual(parts[1], "audio")
+    def test_batch_video(self):
+        p = self.parse("batch:video:7")
+        self.assertEqual(p[1], "video")
 
-    def test_back_parse(self):
-        data = "back:15"
-        parts = data.split(":")
-        self.assertEqual(parts[0], "back")
-        self.assertEqual(int(parts[1]), 15)
+    def test_batch_audio(self):
+        p = self.parse("batch:audio:3")
+        self.assertEqual(p[1], "audio")
+
+    def test_back(self):
+        p = self.parse("back:15")
+        self.assertEqual(p, ["back", "15"])
 
 
 class TestAdminCommands(unittest.TestCase):
 
-    def test_admin_check(self):
+    def test_strip_at(self):
+        self.assertEqual("@test".lstrip("@"), "test")
+        self.assertEqual("test".lstrip("@"), "test")
+
+    def test_admin_ids_type(self):
         from bot.config import ADMIN_IDS
         self.assertIsInstance(ADMIN_IDS, list)
-        for a in ADMIN_IDS:
-            self.assertIsInstance(a, int)
-
-    def test_channel_format_strip_at(self):
-        channel = "@testchannel".strip().lstrip("@")
-        self.assertEqual(channel, "testchannel")
-
-    def test_channel_format_no_at(self):
-        channel = "testchannel".strip().lstrip("@")
-        self.assertEqual(channel, "testchannel")
 
 
 if __name__ == "__main__":

@@ -9,15 +9,22 @@ router = Router()
 @router.message(Command("start"))
 async def cmd_start(message: types.Message) -> None:
     text = (
-        "👋 <b>Привет! Я бот для скачивания медиа.</b>\n\n"
-        "📥 <b>Поддерживаемые платформы:</b>\n"
-        "• YouTube (включая Shorts)\n• Instagram\n• TikTok\n• VK\n"
-        "• Twitter / X\n• и другие\n\n"
-        "📌 <b>Как пользоваться:</b>\n"
-        "Просто отправь ссылку на видео/аудио — "
-        "я предложу варианты загрузки.\n\n"
-        "🎬 Выбор качества (360p — 1080p)\n"
-        "📦 Автосжатие при >50MB"
+        "👋 <b>Привет! Я SaveMediaBot 🤖</b>\n\n"
+        "📥 <b>Просто отправь ссылку</b> — я скачаю видео или аудио.\n\n"
+        "🌐 <b>Поддерживаемые платформы:</b>\n"
+        "▫️ YouTube (включая Shorts)\n"
+        "▫️ Instagram\n"
+        "▫️ TikTok\n"
+        "▫️ VK\n"
+        "▫️ Twitter / X\n"
+        "▫️ и 1000+ других\n\n"
+        "🎯 <b>Возможности:</b>\n"
+        "▫️ Выбор качества: 360p → 1080p\n"
+        "▫️ Аудио MP3 (192kbps)\n"
+        "▫️ Пакетная загрузка (до 10 ссылок)\n"
+        "▫️ Автосжатие видео >50MB\n\n"
+        "⚡️ <b>Попробуй прямо сейчас:</b>\n"
+        "Отправь ссылку на любое видео!"
     )
 
     channels = get_required_channels()
@@ -26,8 +33,37 @@ async def cmd_start(message: types.Message) -> None:
         for ch in channels:
             kb.button(text=f"📢 @{ch}", url=f"https://t.me/{ch}")
         kb.adjust(1)
-        text += "\n\n🔒 <b>Не забудь подписаться на каналы:</b>\n"
-        text += "\n".join(f"• @{ch}" for ch in channels)
+        text += "\n\n🔒 <b>Для использования подпишись:</b>\n"
+        text += "\n".join(f"▫️ @{ch}" for ch in channels)
         await message.answer(text, reply_markup=kb.as_markup())
     else:
         await message.answer(text)
+
+
+@router.message(Command("id"))
+async def cmd_id(message: types.Message) -> None:
+    await message.answer(
+        f"🆔 <b>Твой Telegram ID:</b>\n"
+        f"<code>{message.from_user.id}</code>\n\n"
+        f"📌 <b>Username:</b> @{message.from_user.username or 'не задан'}\n"
+        f"📌 <b>Имя:</b> {message.from_user.full_name}"
+    )
+
+
+@router.message(Command("help"))
+async def cmd_help(message: types.Message) -> None:
+    text = (
+        "ℹ️ <b>Помощь по SaveMediaBot</b>\n\n"
+        "📥 <b>Как скачать:</b>\n"
+        "1. Отправь ссылку на видео\n"
+        "2. Выбери формат: 🎬 Видео или 🎵 Аудио\n"
+        "3. (для видео) Выбери качество\n"
+        "4. Файл придёт в чат ✅\n\n"
+        "📎 <b>Пакетная загрузка:</b>\n"
+        "Отправь несколько ссылок в одном сообщении\n\n"
+        "📦 <b>Сжатие:</b>\n"
+        "Видео >50MB сжимается автоматически (нужен ffmpeg)\n\n"
+        "🔒 <b>Подписка:</b>\n"
+        "Некоторые каналы могут быть обязательны для использования"
+    )
+    await message.answer(text)

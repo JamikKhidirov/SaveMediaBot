@@ -1,197 +1,172 @@
 # SaveMediaBot 🤖
 
-**Telegram bot for downloading media from YouTube, Instagram, TikTok, VK, Twitter/X and other platforms.**
+**Telegram-бот для скачивания видео и аудио с YouTube, Instagram, TikTok, VK, Twitter/X и 1000+ других платформ.**
 
 ---
 
-## Features ✨
+## Возможности ✨
 
-| Feature | Description |
-|---------|-------------|
-| **Multi-platform** | YouTube, Instagram, TikTok, VK, Twitter/X, and 1000+ sites via yt-dlp |
-| **YouTube Shorts** | Auto-detection of Shorts with optimized quality selection |
-| **Format selection** | Inline buttons: video or audio (MP3 192kbps) |
-| **Quality choice** | 360p / 480p / 720p / 1080p — pick before downloading |
-| **Batch download** | Send multiple links in one message — download all at once |
-| **Auto-compression** | Video >50MB is automatically compressed with ffmpeg |
-| **Subscription gate** | Require users to subscribe to channels before using the bot |
-| **Auto-cleanup** | Files are deleted from disk immediately after sending |
-| **Admin panel** | Commands to manage required channels |
+| Функция | Описание |
+|---------|----------|
+| **🎬 Видео** | YouTube, Shorts, Instagram, TikTok, VK, Twitter/X |
+| **🎵 Аудио MP3** | 192kbps — для музыки, подкастов, лекций |
+| **🎯 Выбор качества** | 360p / 480p / 720p / 1080p / Лучшее |
+| **📎 Пакетная загрузка** | Отправь несколько ссылок — всё скачается разом |
+| **📦 Автосжатие** | Видео >50MB сжимается ffmpeg (если установлен) |
+| **🔒 Рекламная подписка** | Админ добавляет каналы — пользователь подписывается |
+| **🗑️ Автоудаление** | Файл скачался → отправился → стёрся с диска |
+| **⚙️ Автоконфиг** | Команды, описание и фото бота устанавливаются сами |
 
 ---
 
-## Architecture 🏗️
+## Архитектура 🏗️
 
 ```
 SaveMediaBot/
 ├── bot/
 │   ├── __init__.py
-│   ├── main.py                    # Entry point, polling
-│   ├── config.py                  # BOT_TOKEN, ADMIN_IDS from .env
+│   ├── main.py                 # Точка входа + автоконфиг (команды, описание, фото)
+│   ├── config.py               # BOT_TOKEN, ADMIN_IDS, BOT_PHOTO_PATH из .env
+│   ├── utils.py                # URL-паттерн, извлечение ссылок, определение Shorts
 │   ├── handlers/
 │   │   ├── __init__.py
-│   │   ├── start.py               # /start command
-│   │   ├── download.py            # Link handling, format/quality selection, batch download
-│   │   └── admin.py               # Admin commands for channel management
+│   │   ├── start.py            # /start, /id, /help
+│   │   ├── download.py         # Ссылка → формат → качество → загрузка
+│   │   └── admin.py            # /add_channel, /remove_channel, /list_channels
 │   └── services/
 │       ├── __init__.py
-│       ├── downloader.py          # yt-dlp wrapper with quality & compression
-│       └── subscription.py        # Channel subscription checker
-├── data/                          # Runtime data (channels.json)
-├── .env                           # Environment variables (not committed)
-├── .env.example                   # Environment template
-├── requirements.txt
-└── .gitignore
-```
-
-### Flow
-
-```
-User sends link
-    │
-    ▼
-Check subscriptions ──❌──► Show channel list + "✅ I subscribed"
-    │                               │
-    ✔                               ▼
-    │                           User subscribes & clicks button
-    ▼                               │
-Format selection (Video / Audio)    │
-    │                               │
-    ▼                               │
-[if Video] Quality selection ──back─┘
-    │
-    ▼
-Download via yt-dlp
-    │
-    ▼
-[if video >50MB] Compress with ffmpeg
-    │
-    ▼
-Send file to user
-    │
-    ▼
-Delete file from disk
+│       ├── downloader.py       # yt-dlp: скачивание, сжатие, очистка
+│       └── subscription.py     # Проверка подписок на каналы
+├── assets/
+│   └── bot_photo.jpg           # Аватар бота (опционально)
+├── data/
+│   └── channels.json           # Список каналов для подписки
+├── .env                        # Настройки (не в git)
+├── .env.example                # Шаблон настроек
+├── requirements.txt            # Зависимости
+├── tests.py                    # 36 тестов
+└── README.md
 ```
 
 ---
 
-## Quick Start 🚀
+## Быстрый старт 🚀
 
-### 1. Clone & setup
+### 1. Клонировать и установить
 
 ```bash
 git clone https://github.com/JamikKhidirov/SaveMediaBot.git
 cd SaveMediaBot
 python -m venv .venv
-```
-
-### 2. Install dependencies
-
-```bash
-.venv\Scripts\activate          # Windows
-source .venv/bin/activate       # Linux / macOS
-
+# Активировать:
+# Windows: .venv\Scripts\activate
+# Linux:   source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure
-
-Copy `.env.example` to `.env` and fill in:
+### 2. Настроить `.env`
 
 ```env
 BOT_TOKEN=1234567890:ABCdefGHIjklmNOPqrstUVwxyz
 ADMIN_IDS=12345678,87654321
+BOT_PHOTO_PATH=assets/bot_photo.jpg
 ```
 
-> `ADMIN_IDS` — comma-separated Telegram user IDs that can manage channels.
+> `ADMIN_IDS` — твой Telegram ID (узнать через `/id` в боте)
 
-### 4. Run
+### 3. Запустить
 
 ```bash
 python -m bot.main
 ```
 
----
-
-## Commands 📋
-
-### User commands
-
-| Command | Description |
-|---------|-------------|
-| `/start` | Welcome message with platform list and channel info |
-| *(send any link)* | Triggers format selection → quality selection → download |
-
-### Admin commands
-
-| Command | Description |
-|---------|-------------|
-| `/add_channel @channel` | Add a channel to subscription requirement |
-| `/remove_channel @channel` | Remove a channel from subscription requirement |
-| `/list_channels` | Show all required channels |
+При запуске бот **автоматически**:
+- Установит список команд с описаниями
+- Установит описание и краткое описание
+- Загрузит аватарку из `assets/bot_photo.jpg` (если есть)
 
 ---
 
-## Download flow details 📥
+## Команды 📋
 
-### Single link
+### Пользовательские
 
-1. **Send a URL** — bot detects YouTube, Instagram, TikTok, VK, Twitter/X links
-2. **Choose format** — inline buttons: `🎬 Video` or `🎵 Audio (MP3)`
-3. **Choose quality** — pick from available resolutions (360p — 1080p) or `🏆 Best`
-4. **Auto-download** — file is sent to chat and immediately deleted from server
+| Команда | Описание |
+|---------|----------|
+| `/start` | Приветствие и список возможностей |
+| `/id` | Узнать свой Telegram ID и username |
+| `/help` | Подробная справка по использованию |
 
-### Batch download
+### Админские (только для ADMIN_IDS)
 
-Send multiple URLs in one message (one per line or separated by spaces). Bot will:
-1. Detect all links
-2. Ask: download all as video or all as audio
-3. Process sequentially with progress indicators
-4. Show summary: ✅ success / ❌ failed
-
-### Compression
-
-If a video exceeds **50 MB**, the bot attempts to compress it with **ffmpeg** using `-crf 28`.  
-If ffmpeg is not installed, the file is sent as-is with a warning.
+| Команда | Описание |
+|---------|----------|
+| `/add_channel @channel` | Добавить канал в рекламу |
+| `/remove_channel @channel` | Убрать канал из рекламы |
+| `/list_channels` | Показать все каналы |
 
 ---
 
-## Subscription gate 🔒
+## Как это работает 📥
 
-Admins can require users to subscribe to specific Telegram channels before using the bot:
+### Одиночная ссылка
 
-1. Add channels with `/add_channel @channel_name`
-2. When an unsubscribed user sends a link, they see the channel list with subscribe buttons
-3. After subscribing, they click `✅ I subscribed` and the bot verifies
-4. Once all channels are subscribed, the download proceeds normally
+1. Отправляешь ссылку → бот определяет платформу
+2. Кнопки: **🎬 Видео** или **🎵 Аудио (MP3)**
+3. (для видео) Выбор качества: **360p → 1080p** или **🏆 Лучшее**
+4. Файл приходит в чат → сразу удаляется с сервера
+
+### Пакетная загрузка
+
+Отправь несколько ссылок в одном сообщении. Бот:
+1. Найдёт все ссылки
+2. Спросит: всё видео или всё аудио
+3. Скачает по очереди с прогресс-индикатором
+4. Покажет итог: ✅ успешно / ❌ ошибки
+
+### Автосжатие
+
+Если видео > **50 MB**, бот автоматически сжимает его через **ffmpeg** (`-crf 28`).  
+Если ffmpeg не установлен — отправляет как есть с предупреждением.
 
 ---
 
-## Requirements 📦
+## Система рекламы 🔒
+
+Админ добавляет каналы через `/add_channel @channel`.  
+Пользователь, отправляя ссылку, видит: *«Подпишись на каналы»* с кнопками перехода.  
+Подписался → нажал **✅ Я подписался** → получил доступ.
+
+**Монетизация:** чем больше каналов в списке, тем больше подписчиков они получают.
+
+---
+
+## Тесты 🧪
+
+```bash
+python tests.py
+```
+
+36 тестов покрывают:
+- Извлечение URL из текста (YouTube, Instagram, TikTok, VK, Twitter/X)
+- Определение Shorts
+- Парсинг callback-данных
+- Сервис подписок (add/remove/list/persist)
+- Извлечение доступных разрешений видео
+- In-memory store
+
+---
+
+## Зависимости 📦
 
 - **Python** 3.10+
-- **ffmpeg** (optional, for video compression)
-- Dependencies (auto-installed via pip):
-  - `aiogram>=3.0` — async Telegram Bot framework
-  - `yt-dlp>=2024.0` — universal media downloader
-  - `python-dotenv>=1.0` — environment file loader
+- **ffmpeg** (опционально, для сжатия видео)
+- `aiogram>=3.0` — Telegram Bot Framework
+- `yt-dlp>=2024.0` — универсальный загрузчик
+- `python-dotenv>=1.0` — .env-файлы
 
 ---
 
-## Supported platforms 🌐
-
-| Platform | Video | Audio | Quality selection |
-|----------|-------|-------|-------------------|
-| YouTube | ✅ | ✅ | ✅ (360p–1080p) |
-| YouTube Shorts | ✅ | ✅ | ✅ (up to 600p) |
-| Instagram | ✅ | ❌ | ✅ |
-| TikTok | ✅ | ❌ | ✅ |
-| VK | ✅ | ❌ | ✅ |
-| Twitter / X | ✅ | ❌ | ✅ |
-| *1000+ others via yt-dlp* | varies | varies | varies |
-
----
-
-## License 📄
+## Лицензия 📄
 
 MIT

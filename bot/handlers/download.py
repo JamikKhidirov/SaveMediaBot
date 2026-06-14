@@ -1,9 +1,9 @@
 import os
-import re
 import asyncio
 import logging
 from aiogram import Router, F, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from bot.utils import extract_urls, is_shorts, short_label, SHORTS_HEIGHT
 from bot.services.downloader import (
     download,
     compress_video,
@@ -17,32 +17,13 @@ from bot.services.subscription import check_subscriptions
 router = Router()
 logger = logging.getLogger(__name__)
 
-URL_PATTERN = re.compile(
-    r"https?://(?:[\w-]+\.)?"
-    r"(?:youtube\.com|youtu\.be|instagram\.com|tiktok\.com|"
-    r"vk\.com|twitter\.com|x\.com|"
-    r"[\w-]+\.[\w-]+)"
-    r"(?:/\S*)?",
-    re.IGNORECASE,
-)
-
 _link_store: dict[int, dict] = {}
 _pending_store: dict[int, str] = {}
-SHORTS_HEIGHT = 600
-
-
-def _extract_urls(text: str) -> list[str]:
-    return list(set(URL_PATTERN.findall(text)))
-
-
-def _is_shorts(url: str) -> bool:
-    return "/shorts/" in url
 
 
 async def _ensure_subscribed(message: types.Message) -> bool:
     user_id = message.from_user.id
-    bot = message.bot
-    unsubscribed = await check_subscriptions(bot, user_id)
+    unsubscribed = await check_subscriptions(message.bot, user_id)
     if not unsubscribed:
         return True
 
@@ -70,15 +51,13 @@ async def cb_check_subscription(callback: types.CallbackQuery) -> None:
 
     unsubscribed = await check_subscriptions(callback.bot, user_id)
     if unsubscribed:
-        await callback.answer(
-            "❌ Ты ещё не подписался на все каналы", show_alert=True
-        )
+        await callback.answer("❌ Ты ещё не подписался на все каналы", show_alert=True)
         return
 
     del _pending_store[user_id]
     await callback.message.delete()
 
-    urls = _extract_urls(text)
+    urls = extract_urls(text)
     if not urls:
         return
     if len(urls) == 1:
@@ -89,7 +68,7 @@ async def cb_check_subscription(callback: types.CallbackQuery) -> None:
 
 @router.message(F.text)
 async def handle_link(message: types.Message) -> None:
-    urls = _extract_urls(message.text)
+    urls = extract_urls(message.text)
     if not urls:
         return
 
@@ -104,32 +83,31 @@ async def handle_link(message: types.Message) -> None:
 
 
 async def _handle_single(message: types.Message, url: str) -> None:
-    is_shorts = _is_shorts(url)
-    label = "🎬 Shorts" if is_shorts else "🎬 Видео"
-
     msg = await message.answer(
         "📥 <b>Выбери формат:</b>",
-        reply_markup=InlineKeyboardBuilder()
-        .button(text=label, callback_data=f"fmt:video:{message.message_id}")
-        .button(text="🎵 Аудио (MP3)", callback_data=f"fmt:audio:{message.message_id}")
-        .adjust(2)
-        .as_markup(),
+        reply_markup=(
+            InlineKeyboardBuilder()
+            .button(text=short_label(url), callback_data=f"fmt:video:{message.message_id}")
+            .button(text="🎵 Аудио (MP3)", callback_data=f"fmt:audio:{message.message_id}")
+            .adjust(2)
+            .as_markup()
+        ),
     )
-
-    _link_store[msg.message_id] = {"urls": [url], "is_shorts": is_shorts}
+    _link_store[msg.message_id] = {"urls": [url]}
 
 
 async def _handle_batch(message: types.Message, urls: list[str]) -> None:
     msg = await message.answer(
         f"📥 <b>Найдено {len(urls)} ссылок.</b>\n\nКак скачать?",
-        reply_markup=InlineKeyboardBuilder()
-        .button(text="🎬 Все видео", callback_data=f"batch:video:{message.message_id}")
-        .button(text="🎵 Все аудио", callback_data=f"batch:audio:{message.message_id}")
-        .adjust(2)
-        .as_markup(),
+        reply_markup=(
+            InlineKeyboardBuilder()
+            .button(text="🎬 Все видео", callback_data=f"batch:video:{message.message_id}")
+            .button(text="🎵 Все аудио", callback_data=f"batch:audio:{message.message_id}")
+            .adjust(2)
+            .as_markup()
+        ),
     )
-
-    _link_store[msg.message_id] = {"urls": urls, "is_shorts": False}
+    _link_store[msg.message_id] = {"urls": urls}
 
 
 @router.callback_query(F.data.startswith("fmt:video:"))
@@ -141,11 +119,7 @@ async def cb_format_video(callback: types.CallbackQuery) -> None:
         return
 
     url = entry["urls"][0]
-
-    if not await _ensure_subscribed(callback.message):
-        return
-
-    await callback.message.edit_text("⏳ <b>Получаю информацию...</b>")
+    await callback.message.edit_text("⏳ <b>Получаю информацию о видео...</b>")
 
     try:
         info = await asyncio.to_thread(get_info, url)
@@ -154,7 +128,7 @@ async def cb_format_video(callback: types.CallbackQuery) -> None:
         await callback.message.edit_text(f"❌ <b>Ошибка:</b> {e}")
         return
 
-    if entry["is_shorts"]:
+    if is_shorts(url):
         heights = [h for h in heights if h <= SHORTS_HEIGHT] or heights[:1]
 
     kb = InlineKeyboardBuilder()
@@ -179,18 +153,13 @@ async def cb_format_audio(callback: types.CallbackQuery) -> None:
         return
 
     url = entry["urls"][0]
-
-    if not await _ensure_subscribed(callback.message):
-        return
-
     await _process_download(callback, url, audio_only=True, msg_id=msg_id)
 
 
 @router.callback_query(F.data.startswith("q:"))
 async def cb_quality(callback: types.CallbackQuery) -> None:
     parts = callback.data.split(":")
-    height_str = parts[1]
-    msg_id = int(parts[2])
+    height_str, msg_id = parts[1], int(parts[2])
     entry = _link_store.get(msg_id)
     if not entry:
         await callback.answer("Ссылка устарела, отправь снова", show_alert=True)
@@ -198,14 +167,7 @@ async def cb_quality(callback: types.CallbackQuery) -> None:
 
     url = entry["urls"][0]
     format_height = None if height_str == "best" else int(height_str)
-
-    await _process_download(
-        callback,
-        url,
-        audio_only=False,
-        format_height=format_height,
-        msg_id=msg_id,
-    )
+    await _process_download(callback, url, audio_only=False, format_height=format_height, msg_id=msg_id)
 
 
 @router.callback_query(F.data.startswith("batch:video:"))
@@ -215,10 +177,6 @@ async def cb_batch_video(callback: types.CallbackQuery) -> None:
     if not entry:
         await callback.answer("Ссылка устарела, отправь снова", show_alert=True)
         return
-
-    if not await _ensure_subscribed(callback.message):
-        return
-
     await _process_batch(callback, entry["urls"], audio_only=False, msg_id=msg_id)
 
 
@@ -229,10 +187,6 @@ async def cb_batch_audio(callback: types.CallbackQuery) -> None:
     if not entry:
         await callback.answer("Ссылка устарела, отправь снова", show_alert=True)
         return
-
-    if not await _ensure_subscribed(callback.message):
-        return
-
     await _process_batch(callback, entry["urls"], audio_only=True, msg_id=msg_id)
 
 
@@ -245,16 +199,15 @@ async def cb_back(callback: types.CallbackQuery) -> None:
         return
 
     url = entry["urls"][0]
-    is_shorts = _is_shorts(url)
-    label = "🎬 Shorts" if is_shorts else "🎬 Видео"
-
     await callback.message.edit_text(
         "📥 <b>Выбери формат:</b>",
-        reply_markup=InlineKeyboardBuilder()
-        .button(text=label, callback_data=f"fmt:video:{msg_id}")
-        .button(text="🎵 Аудио (MP3)", callback_data=f"fmt:audio:{msg_id}")
-        .adjust(2)
-        .as_markup(),
+        reply_markup=(
+            InlineKeyboardBuilder()
+            .button(text=short_label(url), callback_data=f"fmt:video:{msg_id}")
+            .button(text="🎵 Аудио (MP3)", callback_data=f"fmt:audio:{msg_id}")
+            .adjust(2)
+            .as_markup()
+        ),
     )
 
 
@@ -273,9 +226,7 @@ async def _process_download(
         filepath = await download(url, audio_only=audio_only, format_height=format_height)
 
         if not filepath or not os.path.exists(filepath):
-            await callback.message.edit_text(
-                "❌ <b>Не удалось загрузить файл.</b>\nПроверь ссылку или попробуй позже."
-            )
+            await callback.message.edit_text("❌ <b>Не удалось загрузить файл.</b>\nПроверь ссылку или попробуй позже.")
             return
 
         if not audio_only:
@@ -284,23 +235,14 @@ async def _process_download(
 
         if not audio_only and os.path.getsize(filepath) > MAX_SIZE:
             await callback.message.edit_text(
-                "⚠️ <b>Файл больше 50MB.</b>\n"
-                "ffmpeg не найден — не могу сжать.\n"
-                "Отправляю как есть (может не загрузиться)."
+                "⚠️ <b>Файл больше 50MB.</b>\nffmpeg не найден — не могу сжать.\nОтправляю как есть."
             )
 
         caption = "✅ <b>Готово!</b>"
         if audio_only:
-            await callback.message.answer_audio(
-                types.FSInputFile(filepath),
-                caption=caption,
-            )
+            await callback.message.answer_audio(types.FSInputFile(filepath), caption=caption)
         else:
-            await callback.message.answer_video(
-                types.FSInputFile(filepath),
-                caption=caption,
-                supports_streaming=True,
-            )
+            await callback.message.answer_video(types.FSInputFile(filepath), caption=caption, supports_streaming=True)
 
         await callback.message.delete()
 
@@ -329,7 +271,6 @@ async def _process_batch(
 
     for i, url in enumerate(urls, 1):
         status_msg = await callback.message.answer(f"📥 <b>[{i}/{total}]</b> Скачиваю...")
-
         filepath = None
         try:
             filepath = await download(url, audio_only=audio_only)
@@ -341,17 +282,11 @@ async def _process_batch(
             if not audio_only:
                 filepath = await compress_video(filepath)
 
+            kwargs = {"caption": f"✅ <b>[{i}/{total}]</b>"}
             if audio_only:
-                await callback.message.answer_audio(
-                    types.FSInputFile(filepath),
-                    caption=f"✅ <b>[{i}/{total}]</b>",
-                )
+                await callback.message.answer_audio(types.FSInputFile(filepath), **kwargs)
             else:
-                await callback.message.answer_video(
-                    types.FSInputFile(filepath),
-                    caption=f"✅ <b>[{i}/{total}]</b>",
-                    supports_streaming=True,
-                )
+                await callback.message.answer_video(types.FSInputFile(filepath), **kwargs, supports_streaming=True)
 
             success += 1
             await status_msg.delete()
@@ -364,9 +299,7 @@ async def _process_batch(
             if filepath:
                 await cleanup(filepath)
 
-    await callback.message.edit_text(
-        f"🏁 <b>Готово!</b>\n✅ Успешно: {success}\n❌ Ошибок: {failed}"
-    )
+    await callback.message.edit_text(f"🏁 <b>Готово!</b>\n✅ Успешно: {success}\n❌ Ошибок: {failed}")
 
     if msg_id in _link_store:
         del _link_store[msg_id]
