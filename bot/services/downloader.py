@@ -16,7 +16,7 @@ def get_info(url: str) -> dict:
 
 def _get_available_heights(info: dict) -> list[int]:
     heights: set[int] = set()
-    for fmt in info.get("formats", []):
+    for fmt in info.get("formats") or []:
         h = fmt.get("height")
         if h and fmt.get("vcodec") != "none":
             heights.add(h)
