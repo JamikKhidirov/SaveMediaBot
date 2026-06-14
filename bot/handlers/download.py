@@ -18,10 +18,11 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 URL_PATTERN = re.compile(
-    r"https?://(?:www\.)?"
+    r"https?://(?:[\w-]+\.)?"
     r"(?:youtube\.com|youtu\.be|instagram\.com|tiktok\.com|"
     r"vk\.com|twitter\.com|x\.com|"
-    r"[-\w]+\.\w{2,}/[-\w]+)",
+    r"[\w-]+\.[\w-]+)"
+    r"(?:/\S*)?",
     re.IGNORECASE,
 )
 
