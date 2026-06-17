@@ -4,13 +4,30 @@ import asyncio
 import subprocess
 import logging
 from yt_dlp import YoutubeDL
+from bot.config import PROXY
 
 MAX_SIZE = 50 * 1024 * 1024
 logger = logging.getLogger(__name__)
 
 
+def _base_opts() -> dict:
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "ignoreerrors": True,
+        "socket_timeout": 30,
+        "retries": 3,
+        "fragment_retries": 3,
+    }
+    if PROXY:
+        opts["proxy"] = PROXY
+    return opts
+
+
 def get_info(url: str) -> dict:
-    with YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+    opts = _base_opts()
+    opts["extract_flat"] = False
+    with YoutubeDL(opts) as ydl:
         return ydl.extract_info(url, download=False)
 
 
@@ -32,11 +49,8 @@ def _download(
     tmp = tempfile.gettempdir()
     outtmpl = os.path.join(tmp, "%(title)s.%(ext)s")
 
-    opts = {
-        "outtmpl": outtmpl,
-        "quiet": True,
-        "no_warnings": True,
-    }
+    opts = _base_opts()
+    opts["outtmpl"] = outtmpl
 
     if audio_only:
         opts["format"] = "bestaudio/best"

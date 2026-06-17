@@ -51,8 +51,11 @@ async def main() -> None:
     )
     dp = Dispatcher()
 
-    await setup_bot_meta(bot)
-    await set_bot_photo(bot, BOT_PHOTO_PATH)
+    try:
+        await setup_bot_meta(bot)
+        await set_bot_photo(bot, BOT_PHOTO_PATH)
+    except Exception as e:
+        logger.warning("Не удалось настроить мету бота: %s", e)
 
     dp.include_routers(start.router, download.router, admin.router)
 
