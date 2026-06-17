@@ -83,31 +83,35 @@ async def handle_link(message: types.Message) -> None:
 
 
 async def _handle_single(message: types.Message, url: str) -> None:
-    msg = await message.answer(
+    msg = await message.answer("📥 <b>Выбери формат:</b>")
+    mid = msg.message_id
+    _link_store[mid] = {"urls": [url]}
+    await msg.edit_text(
         "📥 <b>Выбери формат:</b>",
         reply_markup=(
             InlineKeyboardBuilder()
-            .button(text=short_label(url), callback_data=f"fmt:video:{message.message_id}")
-            .button(text="🎵 Аудио (MP3)", callback_data=f"fmt:audio:{message.message_id}")
+            .button(text=short_label(url), callback_data=f"fmt:video:{mid}")
+            .button(text="🎵 Аудио (MP3)", callback_data=f"fmt:audio:{mid}")
             .adjust(2)
             .as_markup()
         ),
     )
-    _link_store[msg.message_id] = {"urls": [url]}
 
 
 async def _handle_batch(message: types.Message, urls: list[str]) -> None:
-    msg = await message.answer(
+    msg = await message.answer(f"📥 <b>Найдено {len(urls)} ссылок.</b>\n\nКак скачать?")
+    mid = msg.message_id
+    _link_store[mid] = {"urls": urls}
+    await msg.edit_text(
         f"📥 <b>Найдено {len(urls)} ссылок.</b>\n\nКак скачать?",
         reply_markup=(
             InlineKeyboardBuilder()
-            .button(text="🎬 Все видео", callback_data=f"batch:video:{message.message_id}")
-            .button(text="🎵 Все аудио", callback_data=f"batch:audio:{message.message_id}")
+            .button(text="🎬 Все видео", callback_data=f"batch:video:{mid}")
+            .button(text="🎵 Все аудио", callback_data=f"batch:audio:{mid}")
             .adjust(2)
             .as_markup()
         ),
     )
-    _link_store[msg.message_id] = {"urls": urls}
 
 
 @router.callback_query(F.data.startswith("fmt:video:"))

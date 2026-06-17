@@ -36,6 +36,16 @@ from bot.utils import extract_urls, is_shorts, short_label, URL_PATTERN
 from bot.handlers.admin import _is_admin
 
 
+def _make_answer_msg(message_id: int) -> MagicMock:
+    m = MagicMock()
+    m.message_id = message_id + 100
+    m.edit_text = AsyncMock()
+    m.delete = AsyncMock()
+    m.answer_audio = AsyncMock()
+    m.answer_video = AsyncMock()
+    return m
+
+
 def _make_message(
     text: str = "",
     user_id: int = 12345,
@@ -51,7 +61,7 @@ def _make_message(
     msg.from_user.username = username
     msg.from_user.full_name = "Test User"
     msg.bot = AsyncMock()
-    msg.answer = AsyncMock(return_value=MagicMock(message_id=message_id + 100))
+    msg.answer = AsyncMock(return_value=_make_answer_msg(message_id))
     msg.answer_audio = AsyncMock()
     msg.answer_video = AsyncMock()
     msg.delete = AsyncMock()
