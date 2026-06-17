@@ -27,8 +27,15 @@ def _base_opts() -> dict:
 def get_info(url: str) -> dict:
     opts = _base_opts()
     opts["extract_flat"] = False
+    opts["ignoreerrors"] = False
     with YoutubeDL(opts) as ydl:
-        return ydl.extract_info(url, download=False)
+        info = ydl.extract_info(url, download=False)
+        if not info:
+            raise ConnectionError(
+                "Не удалось подключиться к серверу. "
+                "Проверь VPN или настрой PROXY в .env"
+            )
+        return info
 
 
 def _get_available_heights(info: dict) -> list[int]:
@@ -73,6 +80,12 @@ def _download(
 
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
+        if not info:
+            raise ConnectionError(
+                "Не удалось подключиться к серверу. "
+                "Проверь VPN или настрой PROXY в .env"
+            )
+
         filename = ydl.prepare_filename(info)
 
         if audio_only:
