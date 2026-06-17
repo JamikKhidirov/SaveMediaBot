@@ -4,13 +4,15 @@ import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommandScopeAllPrivateChats, FSInputFile
 
-from bot.config import BOT_TOKEN, BOT_PHOTO_PATH
+from bot.config import BOT_TOKEN, BOT_PHOTO_PATH, TELEGRAM_PROXY
 from bot.handlers import start, download, admin
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 COMMANDS = [
     ("start", "🚀 Запустить бота и узнать возможности"),
@@ -45,9 +47,11 @@ async def set_bot_photo(bot: Bot, photo_path: str | None) -> None:
 
 
 async def main() -> None:
+    session = AiohttpSession(proxy=TELEGRAM_PROXY) if TELEGRAM_PROXY else None
     bot = Bot(
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        session=session,
     )
     dp = Dispatcher()
 
