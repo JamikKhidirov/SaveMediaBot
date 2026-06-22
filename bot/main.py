@@ -68,6 +68,7 @@ async def set_bot_photo(bot: Bot, photo_path: str | None) -> None:
 
 
 async def main() -> None:
+    os.makedirs(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"), exist_ok=True)
     session = AiohttpSession(proxy=TELEGRAM_PROXY) if TELEGRAM_PROXY else None
     bot = Bot(
         token=BOT_TOKEN,

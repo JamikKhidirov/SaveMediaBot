@@ -18,16 +18,17 @@ def _ensure_data_dir() -> None:
 
 def _load_json(path: str) -> dict:
     _ensure_data_dir()
-    if not os.path.exists(path):
-        _ensure_data_dir()
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        pass
+    try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump({}, f)
-        return {}
-    with open(path, encoding="utf-8") as f:
-        try:
-            return json.load(f)
-        except (json.JSONDecodeError, ValueError):
-            return {}
+    except Exception:
+        pass
+    return {}
 
 
 def _save_json(path: str, data: dict) -> None:
