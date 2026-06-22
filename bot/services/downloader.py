@@ -11,10 +11,22 @@ from yt_dlp.networking.exceptions import TransportError
 from bot.config import PROXY
 
 MAX_SIZE = 50 * 1024 * 1024
+_PROXY_OVERRIDE: str | None = None
 logger = logging.getLogger(__name__)
 
 
+def set_proxy(proxy: str | None) -> None:
+    global _PROXY_OVERRIDE
+    _PROXY_OVERRIDE = proxy
+
+
+def get_proxy() -> str | None:
+    return _PROXY_OVERRIDE
+
+
 def _proxy_from_env() -> str | None:
+    if _PROXY_OVERRIDE:
+        return _PROXY_OVERRIDE
     for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
         val = os.getenv(var)
         if val:
@@ -26,9 +38,19 @@ def _has_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
-def _is_connection_error(e: Exception) -> bool:
+def _is_network_error(e: Exception) -> bool:
     msg = str(e).lower()
-    return any(kw in msg for kw in ("10061", "connection refused", "connectionerror", "connection reset"))
+    return any(kw in msg for kw in (
+        "10061", "connection refused", "connectionerror", "connection reset",
+        "11001", "getaddrinfo", "dns", "unreachable", "timeout", "timed out",
+    ))
+
+
+_CLIENTS = [
+    {"youtube": {"player_client": ["web"]}},
+    {"youtube": {"player_client": ["android"]}},
+    {"youtube": {"player_client": ["ios"]}},
+]
 
 
 def _base_opts() -> dict:
@@ -40,7 +62,8 @@ def _base_opts() -> dict:
         "fragment_retries": 10,
         "geo_bypass": True,
         "nocheckcertificate": True,
-        "extractor_args": {"youtube": {"player_client": ["android"]}},
+        "force_ipv4": True,
+        "extractor_args": _CLIENTS[0],
     }
     proxy = _proxy_from_env()
     if proxy:
@@ -49,20 +72,11 @@ def _base_opts() -> dict:
 
 
 def _extract_with_opts(url: str, opts: dict, *, download: bool = False) -> tuple[dict, YoutubeDL]:
-    try:
-        ydl = YoutubeDL(opts)
-        info = ydl.extract_info(url, download=download)
-        if not info:
-            raise ConnectionError(
-                "Не удалось подключиться к серверу.\n"
-                "Проверь VPN или укажи PROXY в файле .env"
-            )
-        return info, ydl
-    except (TransportError, DownloadError) as e:
-        if _is_connection_error(e) and opts.get("proxy"):
-            logger.warning("Proxy %s failed, retrying without proxy: %s", opts["proxy"], e)
-            opts_no_proxy = {**opts, "proxy": None}
-            ydl = YoutubeDL(opts_no_proxy)
+    errors = []
+    for client_idx in range(len(_CLIENTS)):
+        trial_opts = {**opts, "extractor_args": _CLIENTS[client_idx]}
+        try:
+            ydl = YoutubeDL(trial_opts)
             info = ydl.extract_info(url, download=download)
             if not info:
                 raise ConnectionError(
@@ -70,12 +84,53 @@ def _extract_with_opts(url: str, opts: dict, *, download: bool = False) -> tuple
                     "Проверь VPN или укажи PROXY в файле .env"
                 )
             return info, ydl
-        raise ConnectionError(
-            "Не удалось подключиться к серверу.\n"
-            "1. Проверь, что VPN включён\n"
-            "2. Убедись, что PROXY в .env работает\n"
-            "3. Попробуй перезапустить бота"
-        ) from e
+        except (TransportError, DownloadError) as e:
+            if _is_network_error(e):
+                logger.warning("Attempt %d failed (%s): %s", client_idx + 1, list(_CLIENTS[client_idx]["youtube"]["player_client"])[0], e)
+                errors.append(e)
+                if client_idx < len(_CLIENTS) - 1:
+                    continue
+            raise ConnectionError(
+                "Не удалось подключиться к YouTube.\n"
+                "Возможные решения:\n"
+                "1. Введи /proxy http://ip:port — рабочий прокси\n"
+                "2. Включи системный VPN (не браузерный)\n"
+                "3. Удали PROXY из .env если используешь VPN"
+            ) from e
+
+    if errors and opts.get("proxy"):
+        logger.warning("All clients failed with proxy, retrying without proxy")
+        for client_idx in range(len(_CLIENTS)):
+            trial_opts = {**opts, "proxy": None, "extractor_args": _CLIENTS[client_idx]}
+            try:
+                ydl = YoutubeDL(trial_opts)
+                info = ydl.extract_info(url, download=download)
+                if not info:
+                    raise ConnectionError(
+                        "Не удалось подключиться к серверу.\n"
+                        "Проверь VPN или укажи PROXY в файле .env"
+                    )
+                return info, ydl
+            except (TransportError, DownloadError) as e:
+                if _is_network_error(e):
+                    logger.warning("No-proxy attempt %d failed (%s): %s", client_idx + 1, list(_CLIENTS[client_idx]["youtube"]["player_client"])[0], e)
+                    if client_idx < len(_CLIENTS) - 1:
+                        continue
+                raise ConnectionError(
+                    "Не удалось подключиться к YouTube.\n"
+                    "Возможные решения:\n"
+                    "1. Введи /proxy http://ip:port — рабочий прокси\n"
+                    "2. Включи системный VPN (не браузерный)\n"
+                    "3. Удали PROXY из .env если используешь VPN"
+                ) from e
+
+    raise ConnectionError(
+        "Не удалось подключиться к YouTube.\n"
+        "Возможные решения:\n"
+        "1. Введи /proxy http://ip:port — рабочий прокси\n"
+        "2. Включи системный VPN (не браузерный)\n"
+        "3. Удали PROXY из .env если используешь VPN"
+    )
 
 
 def get_info(url: str) -> dict:

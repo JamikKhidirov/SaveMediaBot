@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -36,6 +35,7 @@ ADMIN_COMMANDS = [
     BotCommand(command="add_admin", description="👤 Добавить админа"),
     BotCommand(command="remove_admin", description="👤 Удалить админа"),
     BotCommand(command="list_admins", description="👥 Список админов"),
+    BotCommand(command="proxy", description="🔌 Прокси"),
     BotCommand(command="set_welcome", description="✏️ Приветствие"),
     BotCommand(command="help_admin", description="🔧 Команды админа"),
 ]
