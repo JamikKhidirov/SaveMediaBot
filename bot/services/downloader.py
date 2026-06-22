@@ -9,6 +9,8 @@ from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 from yt_dlp.networking.exceptions import TransportError
 
+from . import dns  # noqa: F401
+
 MAX_SIZE = 50 * 1024 * 1024
 logger = logging.getLogger(__name__)
 
@@ -18,21 +20,30 @@ def _has_ffmpeg() -> bool:
 
 
 _CLIENTS = [
-    {"youtube": {"player_client": ["web"]}},
-    {"youtube": {"player_client": ["android"]}},
+    {"youtube": {"player_client": ["web"], "player_skip": ["webpage", "configs", "js"]}},
+    {"youtube": {"player_client": ["android"], "player_skip": ["webpage"]}},
     {"youtube": {"player_client": ["ios"]}},
+    {"youtube": {"player_client": ["tv"]}},
+    {"youtube": {"player_client": ["web_embedded"]}},
+    {"youtube": {"player_client": ["tv_embedded"]}},
 ]
+
+_NETWORK_ERRORS = ("10061", "11001", "11002", "getaddrinfo", "connection refused", "dns", "timeout", "connectionerror", "connection reset", "unreachable")
 
 
 def _try_attempt(url: str, opts: dict, *, download: bool) -> dict | None:
     try:
         ydl = YoutubeDL(opts)
         return ydl.extract_info(url, download=download)
-    except (TransportError, DownloadError) as e:
+    except TransportError as e:
+        # сетевые ошибки — пробуем следующий клиент
+        return None
+    except DownloadError as e:
         msg = str(e).lower()
-        if any(kw in msg for kw in ("10061", "11001", "getaddrinfo", "connection refused", "dns", "timeout", "connectionerror", "connection reset", "unreachable")):
-            return None
-        raise ConnectionError("❌ Ошибка подключения к YouTube. Проверь VPN.") from e
+        if "requested format" in msg:
+            raise ValueError(f"❌ Формат не найден для этого видео") from e
+        # все остальные ошибки YouTube — пробуем другой клиент
+        return None
 
 
 def _extract(url: str, *, download: bool = False) -> dict:
@@ -113,25 +124,29 @@ def _download(url: str, *, audio_only: bool = False, format_height: int | None =
             "outtmpl": outtmpl,
         }
         if audio_only:
-            opts["format"] = "bestaudio/best"
+            opts["format"] = "ba/b"
             if has_ff:
                 opts["postprocessors"] = [
                     {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
                 ]
         elif format_height:
-            opts["format"] = f"bestvideo[height<={format_height}]+bestaudio/best[height<={format_height}]" if has_ff else f"best[height<={format_height}]"
+            opts["format"] = f"bv*[height<={format_height}]+ba/b" if has_ff else f"b[height<={format_height}]"
             if has_ff:
                 opts["merge_output_format"] = "mp4"
         else:
-            opts["format"] = "bestvideo+bestaudio/best" if has_ff else "best"
+            opts["format"] = "bv*+ba/b" if has_ff else "b"
             if has_ff:
                 opts["merge_output_format"] = "mp4"
 
-        info = _try_attempt(url, opts, download=True)
+        try:
+            info = _try_attempt(url, opts, download=True)
+        except ValueError:
+            logger.info("Формат не доступен для клиента %s, пробую другой формат", list(client["youtube"]["player_client"])[0])
+            continue
         if info is not None:
             return _get_filename(info, audio_only=audio_only)
         cname = list(client["youtube"]["player_client"])[0]
-        logger.info("Скачивание клиент %s — не ответил", cname)
+        logger.info("Клиент %s — не ответил", cname)
 
     raise ConnectionError(
         "❌ Не удалось подключиться к YouTube.\n"
