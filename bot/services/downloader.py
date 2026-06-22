@@ -4,7 +4,10 @@ import tempfile
 import asyncio
 import subprocess
 import logging
+from typing import Any
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
+from yt_dlp.networking.exceptions import TransportError
 from bot.config import PROXY
 
 MAX_SIZE = 50 * 1024 * 1024
@@ -23,15 +26,21 @@ def _has_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+def _is_connection_error(e: Exception) -> bool:
+    msg = str(e).lower()
+    return any(kw in msg for kw in ("10061", "connection refused", "connectionerror", "connection reset"))
+
+
 def _base_opts() -> dict:
-    opts = {
+    opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
-        "socket_timeout": 30,
-        "retries": 5,
-        "fragment_retries": 5,
+        "socket_timeout": 60,
+        "retries": 10,
+        "fragment_retries": 10,
         "geo_bypass": True,
         "nocheckcertificate": True,
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
     proxy = _proxy_from_env()
     if proxy:
@@ -39,18 +48,42 @@ def _base_opts() -> dict:
     return opts
 
 
-def get_info(url: str) -> dict:
-    opts = _base_opts()
-    opts["extract_flat"] = False
-    opts["ignoreerrors"] = False
-    with YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+def _extract_with_opts(url: str, opts: dict, *, download: bool = False) -> tuple[dict, YoutubeDL]:
+    try:
+        ydl = YoutubeDL(opts)
+        info = ydl.extract_info(url, download=download)
         if not info:
             raise ConnectionError(
                 "Не удалось подключиться к серверу.\n"
                 "Проверь VPN или укажи PROXY в файле .env"
             )
-        return info
+        return info, ydl
+    except (TransportError, DownloadError) as e:
+        if _is_connection_error(e) and opts.get("proxy"):
+            logger.warning("Proxy %s failed, retrying without proxy: %s", opts["proxy"], e)
+            opts_no_proxy = {**opts, "proxy": None}
+            ydl = YoutubeDL(opts_no_proxy)
+            info = ydl.extract_info(url, download=download)
+            if not info:
+                raise ConnectionError(
+                    "Не удалось подключиться к серверу.\n"
+                    "Проверь VPN или укажи PROXY в файле .env"
+                )
+            return info, ydl
+        raise ConnectionError(
+            "Не удалось подключиться к серверу.\n"
+            "1. Проверь, что VPN включён\n"
+            "2. Убедись, что PROXY в .env работает\n"
+            "3. Попробуй перезапустить бота"
+        ) from e
+
+
+def get_info(url: str) -> dict:
+    opts = _base_opts()
+    opts["extract_flat"] = False
+    opts["ignoreerrors"] = False
+    info, _ = _extract_with_opts(url, opts, download=False)
+    return info
 
 
 def _get_available_heights(info: dict) -> list[int]:
@@ -62,16 +95,10 @@ def _get_available_heights(info: dict) -> list[int]:
     return sorted(heights, reverse=True)
 
 
-def _download(
-    url: str,
-    *,
-    audio_only: bool = False,
-    format_height: int | None = None,
-) -> str:
+def _prepare_download_opts(*, audio_only: bool, format_height: int | None) -> dict:
     has_ff = _has_ffmpeg()
     tmp = tempfile.gettempdir()
     outtmpl = os.path.join(tmp, "%(title)s.%(ext)s")
-
     opts = _base_opts()
     opts["outtmpl"] = outtmpl
 
@@ -99,32 +126,40 @@ def _download(
             opts["merge_output_format"] = "mp4"
         else:
             opts["format"] = "best"
+    return opts
 
-    with YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        if not info:
-            raise ConnectionError(
-                "Не удалось подключиться к серверу.\n"
-                "Проверь VPN или укажи PROXY в файле .env"
-            )
 
-        filename = ydl.prepare_filename(info)
+def _resolve_filename(info: dict, ydl: YoutubeDL, *, audio_only: bool) -> str:
+    has_ff = _has_ffmpeg()
+    tmp = tempfile.gettempdir()
+    filename = ydl.prepare_filename(info)
 
-        if audio_only and has_ff:
-            filename = filename.rsplit(".", 1)[0] + ".mp3"
-        elif audio_only and not has_ff:
-            ext = info.get("ext", "m4a")
-            filename = filename.rsplit(".", 1)[0] + f".{ext}"
-        elif not filename.endswith(".mp4"):
-            filename = filename.rsplit(".", 1)[0] + ".mp4"
+    if audio_only and has_ff:
+        filename = filename.rsplit(".", 1)[0] + ".mp3"
+    elif audio_only and not has_ff:
+        ext = info.get("ext", "m4a")
+        filename = filename.rsplit(".", 1)[0] + f".{ext}"
+    elif not filename.endswith(".mp4"):
+        filename = filename.rsplit(".", 1)[0] + ".mp4"
 
-        if not os.path.exists(filename):
-            for f in os.listdir(tmp):
-                if info.get("title") and info["title"] in f:
-                    filename = os.path.join(tmp, f)
-                    break
+    if not os.path.exists(filename):
+        for f in os.listdir(tmp):
+            if info.get("title") and info["title"] in f:
+                filename = os.path.join(tmp, f)
+                break
 
-        return filename
+    return filename
+
+
+def _download(
+    url: str,
+    *,
+    audio_only: bool = False,
+    format_height: int | None = None,
+) -> str:
+    opts = _prepare_download_opts(audio_only=audio_only, format_height=format_height)
+    info, ydl = _extract_with_opts(url, opts, download=True)
+    return _resolve_filename(info, ydl, audio_only=audio_only)
 
 
 def _compress(filepath: str) -> str:
