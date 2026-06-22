@@ -6,37 +6,50 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
-from aiogram.types import BotCommandScopeAllPrivateChats, FSInputFile
+from aiogram.types import (
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat,
+    BotCommand,
+    FSInputFile,
+)
 
-from bot.config import BOT_TOKEN, BOT_PHOTO_PATH, TELEGRAM_PROXY
+from bot.config import BOT_TOKEN, BOT_PHOTO_PATH, TELEGRAM_PROXY, ADMIN_IDS
 from bot.handlers import start, download, admin
+from bot.services.stats import get_additional_admins
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-COMMANDS = [
-    ("start", "🚀 Запустить бота"),
-    ("id", "🆔 Узнать свой Telegram ID"),
-    ("help", "ℹ️ Помощь и список команд"),
-    ("stats", "📊 Статистика бота"),
-    ("broadcast", "📤 Рассылка всем пользователям"),
-    ("add_channel", "➕ Добавить канал в рекламу"),
-    ("remove_channel", "➖ Удалить канал из рекламы"),
-    ("remove_all_channels", "🗑 Удалить все каналы"),
-    ("list_channels", "📋 Список каналов"),
-    ("add_admin", "👤 Добавить админа"),
-    ("remove_admin", "👤 Удалить админа"),
-    ("list_admins", "👥 Список админов"),
-    ("set_welcome", "✏️ Установить приветствие"),
-    ("help_admin", "🔧 Все команды админа"),
+USER_COMMANDS = [
+    BotCommand(command="start", description="🚀 Запустить бота"),
+    BotCommand(command="id", description="🆔 Мой Telegram ID"),
+    BotCommand(command="help", description="ℹ️ Помощь"),
+]
+
+ADMIN_COMMANDS = [
+    BotCommand(command="stats", description="📊 Статистика"),
+    BotCommand(command="broadcast", description="📤 Рассылка"),
+    BotCommand(command="add_channel", description="➕ Добавить канал"),
+    BotCommand(command="remove_channel", description="➖ Удалить канал"),
+    BotCommand(command="remove_all_channels", description="🗑 Удалить все каналы"),
+    BotCommand(command="list_channels", description="📋 Список каналов"),
+    BotCommand(command="add_admin", description="👤 Добавить админа"),
+    BotCommand(command="remove_admin", description="👤 Удалить админа"),
+    BotCommand(command="list_admins", description="👥 Список админов"),
+    BotCommand(command="set_welcome", description="✏️ Приветствие"),
+    BotCommand(command="help_admin", description="🔧 Команды админа"),
 ]
 
 
 async def setup_bot_meta(bot: Bot) -> None:
-    await bot.set_my_commands(
-        [{"command": c[0], "description": c[1]} for c in COMMANDS],
-        scope=BotCommandScopeAllPrivateChats(),
-    )
+    await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeAllPrivateChats())
+    admin_ids = set(ADMIN_IDS) | set(get_additional_admins())
+    for uid in admin_ids:
+        try:
+            combined = USER_COMMANDS + ADMIN_COMMANDS
+            await bot.set_my_commands(combined, scope=BotCommandScopeChat(chat_id=uid))
+        except Exception:
+            logger.warning("Не удалось установить команды для админа %s", uid)
     await bot.set_my_description(
         "🤖 SaveMediaBot — скачивай видео и аудио с YouTube, Instagram, TikTok, VK и других платформ.\n"
         "📥 Просто отправь ссылку и выбери формат.\n"
