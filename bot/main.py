@@ -69,6 +69,7 @@ async def set_bot_photo(bot: Bot, photo_path: str | None) -> None:
 
 async def main() -> None:
     os.makedirs(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"), exist_ok=True)
+
     session = AiohttpSession(proxy=TELEGRAM_PROXY) if TELEGRAM_PROXY else None
     bot = Bot(
         token=BOT_TOKEN,
@@ -87,6 +88,21 @@ async def main() -> None:
 
     try:
         await dp.start_polling(bot)
+    except Exception as e:
+        msg = str(e)
+        if "TELEGRAM_PROXY" in msg or "proxy" in msg.lower() or "getaddrinfo" in msg:
+            logger.critical(
+                "❌ Бот не может подключиться к Telegram.\n\n"
+                "Если ты используешь VPN:\n"
+                "  1. Открой .env и удали строку TELEGRAM_PROXY\n"
+                "  2. Или закомментируй её: # TELEGRAM_PROXY=...\n"
+                "  3. Системный VPN сам направит трафик\n\n"
+                "Если VPN нет:\n"
+                "  Укажи рабочий TELEGRAM_PROXY в .env\n\n"
+                "Ошибка: %s", e
+            )
+        else:
+            logger.critical("❌ Бот упал: %s", e)
     finally:
         await bot.session.close()
 
