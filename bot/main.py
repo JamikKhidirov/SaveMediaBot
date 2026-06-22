@@ -14,29 +14,46 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+async def _try_poll(bot: Bot) -> None:
+    dp = Dispatcher()
+    dp.include_routers(start.router, download.router, admin.router)
+    await dp.start_polling(bot)
+
+
 async def main() -> None:
     os.makedirs(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"), exist_ok=True)
 
-    session = AiohttpSession(proxy=TELEGRAM_PROXY) if TELEGRAM_PROXY else None
     bot = Bot(
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-        session=session,
     )
-    dp = Dispatcher()
-    dp.include_routers(start.router, download.router, admin.router)
-
     try:
-        await dp.start_polling(bot)
-    except Exception as e:
-        logger.critical(
-            "❌ Бот не может подключиться к Telegram.\n"
-            "Проверь:\n"
-            "  1. BOT_TOKEN в .env — правильный?\n"
-            "  2. TELEGRAM_PROXY в .env — удали если не нужен\n"
-            "  3. VPN включён?\n\n"
-            "Ошибка: %s", e
-        )
+        await _try_poll(bot)
+    except Exception:
+        if TELEGRAM_PROXY:
+            logger.info("Прямое подключение не вышло, пробую через прокси %s", TELEGRAM_PROXY)
+            await bot.session.close()
+            bot = Bot(
+                token=BOT_TOKEN,
+                default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+                session=AiohttpSession(proxy=TELEGRAM_PROXY),
+            )
+            try:
+                await _try_poll(bot)
+                return
+            except Exception as e2:
+                logger.critical(
+                    "❌ Бот не может подключиться к Telegram.\n"
+                    "BOT_TOKEN правильный? TELEGRAM_PROXY в .env работает?\n"
+                    "Ошибка: %s", e2
+                )
+        else:
+            logger.critical(
+                "❌ Бот не может подключиться к Telegram.\n"
+                "1. Проверь BOT_TOKEN в .env\n"
+                "2. Включи системный VPN (не браузерный)\n"
+                "3. Если нужно — добавь TELEGRAM_PROXY в .env\n"
+            )
     finally:
         await bot.session.close()
 
