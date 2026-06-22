@@ -19,7 +19,9 @@ def _ensure_data_dir() -> None:
 def _load_json(path: str) -> dict:
     _ensure_data_dir()
     if not os.path.exists(path):
-        _save_json(path, {})
+        _ensure_data_dir()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({}, f)
         return {}
     with open(path, encoding="utf-8") as f:
         try:
