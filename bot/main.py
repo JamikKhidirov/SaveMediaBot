@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import socket
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -67,10 +68,29 @@ async def set_bot_photo(bot: Bot, photo_path: str | None) -> None:
         pass
 
 
+def _make_session() -> AiohttpSession | None:
+    kwargs: dict = {}
+    if TELEGRAM_PROXY:
+        kwargs["proxy"] = TELEGRAM_PROXY
+    try:
+        import aiohttp
+        from aiohttp.resolver import AsyncResolver
+        resolver = AsyncResolver(nameservers=["8.8.8.8", "1.1.1.1", "208.67.222.222"])
+        kwargs["connector"] = aiohttp.TCPConnector(
+            resolver=resolver,
+            family=socket.AF_INET,
+            enable_cleanup_closed=True,
+        )
+        return AiohttpSession(**kwargs)
+    except Exception:
+        pass
+    return AiohttpSession(**kwargs) if kwargs else None
+
+
 async def main() -> None:
     os.makedirs(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"), exist_ok=True)
 
-    session = AiohttpSession(proxy=TELEGRAM_PROXY) if TELEGRAM_PROXY else None
+    session = _make_session()
     bot = Bot(
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
@@ -89,20 +109,16 @@ async def main() -> None:
     try:
         await dp.start_polling(bot)
     except Exception as e:
-        msg = str(e)
-        if "TELEGRAM_PROXY" in msg or "proxy" in msg.lower() or "getaddrinfo" in msg:
-            logger.critical(
-                "❌ Бот не может подключиться к Telegram.\n\n"
-                "Если ты используешь VPN:\n"
-                "  1. Открой .env и удали строку TELEGRAM_PROXY\n"
-                "  2. Или закомментируй её: # TELEGRAM_PROXY=...\n"
-                "  3. Системный VPN сам направит трафик\n\n"
-                "Если VPN нет:\n"
-                "  Укажи рабочий TELEGRAM_PROXY в .env\n\n"
-                "Ошибка: %s", e
-            )
-        else:
-            logger.critical("❌ Бот упал: %s", e)
+        logger.critical(
+            "❌ Бот не может подключиться к Telegram.\n\n"
+            "Твой VPN не маршрутизирует системный трафик.\n"
+            "Попробуй:\n"
+            "  1. Открой .env и удали TELEGRAM_PROXY (если есть)\n"
+            "  2. Установи aiodns: pip install aiodns\n"
+            "  3. Используй системный VPN (WireGuard/OpenVPN), не браузерный\n"
+            "  4. Или укажи рабочий TELEGRAM_PROXY=http://ip:port\n\n"
+            "Ошибка: %s", e
+        )
     finally:
         await bot.session.close()
 
