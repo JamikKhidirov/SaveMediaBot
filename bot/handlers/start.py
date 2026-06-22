@@ -2,30 +2,36 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot.services.subscription import get_required_channels
+from bot.services.stats import get_welcome_message
 
 router = Router()
 
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message) -> None:
-    text = (
-        "👋 <b>Привет! Я SaveMediaBot 🤖</b>\n\n"
-        "📥 <b>Просто отправь ссылку</b> — я скачаю видео или аудио.\n\n"
-        "🌐 <b>Поддерживаемые платформы:</b>\n"
-        "▫️ YouTube (включая Shorts)\n"
-        "▫️ Instagram\n"
-        "▫️ TikTok\n"
-        "▫️ VK\n"
-        "▫️ Twitter / X\n"
-        "▫️ и 1000+ других\n\n"
-        "🎯 <b>Возможности:</b>\n"
-        "▫️ Выбор качества: 360p → 1080p\n"
-        "▫️ Аудио MP3 (192kbps)\n"
-        "▫️ Пакетная загрузка (до 10 ссылок)\n"
-        "▫️ Автосжатие видео >50MB\n\n"
-        "⚡️ <b>Попробуй прямо сейчас:</b>\n"
-        "Отправь ссылку на любое видео!"
-    )
+    custom = get_welcome_message()
+    if custom:
+        base = custom
+    else:
+        base = (
+            "👋 <b>Привет! Я SaveMediaBot 🤖</b>\n\n"
+            "📥 <b>Просто отправь ссылку</b> — я скачаю видео или аудио.\n\n"
+            "🌐 <b>Поддерживаемые платформы:</b>\n"
+            "▫️ YouTube (включая Shorts)\n"
+            "▫️ Instagram\n"
+            "▫️ TikTok\n"
+            "▫️ VK\n"
+            "▫️ Twitter / X\n"
+            "▫️ и 1000+ других\n\n"
+            "🎯 <b>Возможности:</b>\n"
+            "▫️ Выбор качества: 360p → 1080p\n"
+            "▫️ Аудио MP3 (192kbps)\n"
+            "▫️ Пакетная загрузка (до 10 ссылок)\n"
+            "▫️ Автосжатие видео >50MB\n\n"
+            "⚡️ <b>Попробуй прямо сейчас:</b>\n"
+            "Отправь ссылку на любое видео!"
+        )
+    text = base
 
     channels = get_required_channels()
     if channels:

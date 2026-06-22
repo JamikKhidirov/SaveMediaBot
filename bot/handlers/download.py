@@ -13,6 +13,7 @@ from bot.services.downloader import (
     MAX_SIZE,
 )
 from bot.services.subscription import check_subscriptions
+from bot.services.stats import track_user, track_download
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -223,6 +224,9 @@ async def _process_download(
     format_height: int | None = None,
     msg_id: int | None = None,
 ) -> None:
+    user_id = callback.from_user.id
+    track_user(user_id)
+
     await callback.message.edit_text("⏳ <b>Скачиваю...</b>")
 
     filepath = None
@@ -242,6 +246,7 @@ async def _process_download(
                 "⚠️ <b>Файл больше 50MB.</b>\nffmpeg не найден — не могу сжать.\nОтправляю как есть."
             )
 
+        track_download(user_id)
         caption = "✅ <b>Готово!</b>"
         if audio_only:
             await callback.message.answer_audio(types.FSInputFile(filepath), caption=caption)
@@ -268,6 +273,8 @@ async def _process_batch(
     msg_id: int,
 ) -> None:
     total = len(urls)
+    user_id = callback.from_user.id
+    track_user(user_id)
     success = 0
     failed = 0
 
@@ -286,6 +293,7 @@ async def _process_batch(
             if not audio_only:
                 filepath = await compress_video(filepath)
 
+            track_download(user_id)
             kwargs = {"caption": f"✅ <b>[{i}/{total}]</b>"}
             if audio_only:
                 await callback.message.answer_audio(types.FSInputFile(filepath), **kwargs)

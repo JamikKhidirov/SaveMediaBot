@@ -15,12 +15,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 COMMANDS = [
-    ("start", "🚀 Запустить бота и узнать возможности"),
+    ("start", "🚀 Запустить бота"),
     ("id", "🆔 Узнать свой Telegram ID"),
     ("help", "ℹ️ Помощь и список команд"),
-    ("add_channel", "➕ Добавить канал в рекламу (@channel)"),
-    ("remove_channel", "➖ Удалить канал из рекламы (@channel)"),
-    ("list_channels", "📋 Список каналов для подписки"),
+    ("stats", "📊 Статистика бота"),
+    ("broadcast", "📤 Рассылка всем пользователям"),
+    ("add_channel", "➕ Добавить канал в рекламу"),
+    ("remove_channel", "➖ Удалить канал из рекламы"),
+    ("remove_all_channels", "🗑 Удалить все каналы"),
+    ("list_channels", "📋 Список каналов"),
+    ("add_admin", "👤 Добавить админа"),
+    ("remove_admin", "👤 Удалить админа"),
+    ("list_admins", "👥 Список админов"),
+    ("set_welcome", "✏️ Установить приветствие"),
+    ("help_admin", "🔧 Все команды админа"),
 ]
 
 
