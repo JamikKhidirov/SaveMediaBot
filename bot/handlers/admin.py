@@ -16,7 +16,7 @@ from bot.services.stats import (
     get_welcome_message,
     set_welcome_message,
 )
-from bot.services.downloader import set_proxy, get_proxy
+
 
 router = Router()
 
@@ -255,41 +255,6 @@ async def cmd_set_welcome(
     await message.answer("✅ Приветствие сохранено")
 
 
-@router.message(Command("proxy"))
-async def cmd_proxy(
-    message: types.Message,
-    command: CommandObject,
-) -> None:
-    if not _is_admin(message.from_user.id):
-        return
-
-    arg = command.args
-    if not arg:
-        current = get_proxy()
-        if current:
-            await message.answer(
-                f"🔌 <b>Текущий прокси:</b> <code>{current}</code>\n\n"
-                "Изменить: /proxy http://ip:port\n"
-                "Удалить: /proxy off"
-            )
-        else:
-            await message.answer(
-                "🔌 <b>Прокси не установлен</b>\n\n"
-                "Установить: /proxy http://ip:port\n\n"
-                "Используется системный VPN (если включён)"
-            )
-        return
-
-    if arg.strip().lower() == "off":
-        set_proxy(None)
-        await message.answer("✅ Прокси удалён. Используется системное подключение")
-        return
-
-    proxy = arg.strip()
-    set_proxy(proxy)
-    await message.answer(f"✅ Прокси установлен: <code>{proxy}</code>")
-
-
 @router.message(Command("help_admin"))
 async def cmd_help_admin(message: types.Message) -> None:
     if not _is_admin(message.from_user.id):
@@ -306,8 +271,6 @@ async def cmd_help_admin(message: types.Message) -> None:
         "/add_admin &lt;id&gt; — добавить админа\n"
         "/remove_admin &lt;id&gt; — удалить админа\n"
         "/list_admins — список админов\n\n"
-        "🔌 <b>Сеть:</b>\n"
-        "/proxy [url] — установить/показать прокси\n\n"
         "📊 <b>Прочее:</b>\n"
         "/stats — статистика бота\n"
         "/broadcast &lt;text&gt; — рассылка всем\n"

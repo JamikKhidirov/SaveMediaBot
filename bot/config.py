@@ -12,7 +12,3 @@ ADMIN_IDS: list[int] = [
 ]
 
 BOT_PHOTO_PATH: str | None = os.getenv("BOT_PHOTO_PATH")
-
-PROXY: str | None = os.getenv("PROXY") or None
-
-TELEGRAM_PROXY: str | None = os.getenv("TELEGRAM_PROXY") or None
