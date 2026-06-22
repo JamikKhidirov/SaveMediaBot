@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 import asyncio
 import subprocess
@@ -10,17 +11,31 @@ MAX_SIZE = 50 * 1024 * 1024
 logger = logging.getLogger(__name__)
 
 
+def _proxy_from_env() -> str | None:
+    for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+        val = os.getenv(var)
+        if val:
+            return val
+    return PROXY
+
+
+def _has_ffmpeg() -> bool:
+    return shutil.which("ffmpeg") is not None
+
+
 def _base_opts() -> dict:
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "ignoreerrors": True,
         "socket_timeout": 30,
-        "retries": 3,
-        "fragment_retries": 3,
+        "retries": 5,
+        "fragment_retries": 5,
+        "geo_bypass": True,
+        "nocheckcertificate": True,
     }
-    if PROXY:
-        opts["proxy"] = PROXY
+    proxy = _proxy_from_env()
+    if proxy:
+        opts["proxy"] = proxy
     return opts
 
 
@@ -32,8 +47,8 @@ def get_info(url: str) -> dict:
         info = ydl.extract_info(url, download=False)
         if not info:
             raise ConnectionError(
-                "Не удалось подключиться к серверу. "
-                "Проверь VPN или настрой PROXY в .env"
+                "Не удалось подключиться к серверу.\n"
+                "Проверь VPN или укажи PROXY в файле .env"
             )
         return info
 
@@ -53,6 +68,7 @@ def _download(
     audio_only: bool = False,
     format_height: int | None = None,
 ) -> str:
+    has_ff = _has_ffmpeg()
     tmp = tempfile.gettempdir()
     outtmpl = os.path.join(tmp, "%(title)s.%(ext)s")
 
@@ -61,35 +77,44 @@ def _download(
 
     if audio_only:
         opts["format"] = "bestaudio/best"
-        opts["postprocessors"] = [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ]
+        if has_ff:
+            opts["postprocessors"] = [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }
+            ]
+        else:
+            logger.info("ffmpeg not found, downloading best audio as-is")
     elif format_height:
-        opts["format"] = (
-            f"bestvideo[height<={format_height}]+bestaudio/"
-            f"best[height<={format_height}]"
-        )
+        if has_ff:
+            opts["format"] = f"bestvideo[height<={format_height}]+bestaudio/best[height<={format_height}]"
+            opts["merge_output_format"] = "mp4"
+        else:
+            opts["format"] = f"best[height<={format_height}]"
     else:
-        opts["format"] = "bestvideo+bestaudio/best"
-
-    opts["merge_output_format"] = "mp4"
+        if has_ff:
+            opts["format"] = "bestvideo+bestaudio/best"
+            opts["merge_output_format"] = "mp4"
+        else:
+            opts["format"] = "best"
 
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         if not info:
             raise ConnectionError(
-                "Не удалось подключиться к серверу. "
-                "Проверь VPN или настрой PROXY в .env"
+                "Не удалось подключиться к серверу.\n"
+                "Проверь VPN или укажи PROXY в файле .env"
             )
 
         filename = ydl.prepare_filename(info)
 
-        if audio_only:
+        if audio_only and has_ff:
             filename = filename.rsplit(".", 1)[0] + ".mp3"
+        elif audio_only and not has_ff:
+            ext = info.get("ext", "m4a")
+            filename = filename.rsplit(".", 1)[0] + f".{ext}"
         elif not filename.endswith(".mp4"):
             filename = filename.rsplit(".", 1)[0] + ".mp4"
 
